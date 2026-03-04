@@ -6,6 +6,49 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  super_admin
+  admin
+  viewer
+}
+
+enum BatchStatus {
+  draft
+  running
+  completed
+  paused
+}
+
+enum ContactStatus {
+  pending
+  called
+  converted
+  rejected
+  dnc
+  no_answer
+}
+
+enum CallResult {
+  positive
+  rejected
+  dnc
+  no_answer
+}
+
+enum CallProcessingStatus {
+  unprocessed
+  processed
+}
+
+enum SuggestionStatus {
+  pending
+  accepted
+  rejected
+  implemented
+}
+
 // ─── Auth.js tables ───────────────────────────────────────────────────────────
 
 model User {
@@ -14,7 +57,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
-  role          String    @default("admin") // super_admin | admin | viewer
+  role          UserRole  @default(viewer)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -41,6 +84,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -50,6 +94,8 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -80,59 +126,72 @@ model Agent {
 }
 
 model Batch {
-  id            String    @id @default(uuid())
+  id            String      @id @default(uuid())
   userId        String
   name          String
-  totalContacts Int       @default(0)
-  status        String    @default("draft") // draft | running | completed | paused
+  totalContacts Int         @default(0)
+  status        BatchStatus @default(draft)
   startedAt     DateTime?
   completedAt   DateTime?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime    @default(now())
 
   user              User               @relation(fields: [userId], references: [id])
   contacts          Contact[]
   promptSuggestions PromptSuggestion[]
+
+  @@index([userId])
+  @@index([status])
 }
 
 model Contact {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   batchId         String?
   assignedAgentId String?
   firstName       String?
   lastName        String?
   phone           String
   address         String?
-  status          String   @default("pending") // pending | called | converted | rejected | dnc | no_answer
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status          ContactStatus @default(pending)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   batch         Batch?  @relation(fields: [batchId], references: [id])
   assignedAgent Agent?  @relation(fields: [assignedAgentId], references: [id])
   calls         Call[]
+
+  @@index([batchId])
+  @@index([assignedAgentId])
+  @@index([phone])
+  @@index([status])
 }
 
 model Call {
-  id               String    @id @default(uuid())
+  id               String               @id @default(uuid())
   agentId          String
   contactId        String?
-  retellCallId     String?   @unique
+  retellCallId     String?              @unique
   customerName     String?
   customerPhone    String
   customerAddress  String?
   startedAt        DateTime?
   endedAt          DateTime?
   durationSeconds  Int?
-  result           String?   // positive | rejected | dnc | no_answer
-  processingStatus String    @default("unprocessed") // unprocessed | processed
-  summary          String?   @db.Text
-  transcript       String?   @db.Text
+  result           CallResult?
+  processingStatus CallProcessingStatus @default(unprocessed)
+  summary          String?              @db.Text
+  transcript       String?              @db.Text
   audioUrl         String?
-  cost             Decimal?  @db.Decimal(10, 4)
-  createdAt        DateTime  @default(now())
+  cost             Decimal?             @db.Decimal(10, 4)
+  createdAt        DateTime             @default(now())
 
   agent    Agent    @relation(fields: [agentId], references: [id])
   contact  Contact? @relation(fields: [contactId], references: [id])
   dncEntry DncList?
+
+  @@index([agentId])
+  @@index([contactId])
+  @@index([customerPhone])
+  @@index([createdAt])
 }
 
 model DncList {
@@ -146,16 +205,21 @@ model DncList {
 }
 
 model PromptSuggestion {
-  id             String    @id @default(uuid())
+  id             String           @id @default(uuid())
   agentId        String
   batchId        String
   reviewedBy     String?
-  suggestionText String    @db.Text
-  status         String    @default("pending") // pending | accepted | rejected | implemented
+  suggestionText String           @db.Text
+  status         SuggestionStatus @default(pending)
   reviewedAt     DateTime?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime         @default(now())
 
   agent    Agent  @relation(fields: [agentId], references: [id])
   batch    Batch  @relation(fields: [batchId], references: [id])
   reviewer User?  @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([agentId])
+  @@index([batchId])
+  @@index([reviewedBy])
+  @@index([status])
 }
